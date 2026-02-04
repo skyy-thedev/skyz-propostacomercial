@@ -9,7 +9,6 @@ export interface RecommendationInput {
   service: string;
   serviceOption?: string;
   challenges: string[];
-  budget: string;
   timeline: string;
   hasBranding?: string;
 }
@@ -65,7 +64,8 @@ export function generateSmartRecommendation(
     throw new Error(`Serviço não encontrado: ${input.service}`);
   }
 
-  const budgetRange = BUDGET_RANGES[input.budget] || { min: 0, max: Infinity };
+  // Sem limite de orçamento - cliente verá preços reais
+  const budgetRange = { min: 0, max: Infinity };
 
   // 1. Determine o pacote principal recomendado
   const recommendedPackage = createPackageFromService(

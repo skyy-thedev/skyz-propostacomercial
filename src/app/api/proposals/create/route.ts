@@ -23,8 +23,7 @@ interface OptimizedFormData {
   challenges?: string[];
   hasBranding?: string;
 
-  // Step 3 - Investimento
-  budget: string;
+  // Step 3 - Preferências
   deliveryMethod?: string[];
   wantsMeeting: string;
   observations?: string;
@@ -39,7 +38,7 @@ export async function POST(request: NextRequest) {
     const data: OptimizedFormData = await request.json();
 
     // Validações básicas
-    if (!data.service || !data.clientName || !data.clientEmail || !data.budget) {
+    if (!data.service || !data.clientName || !data.clientEmail) {
       return NextResponse.json(
         { error: "Dados obrigatórios faltando" },
         { status: 400 }
@@ -54,7 +53,6 @@ export async function POST(request: NextRequest) {
       service: data.service,
       serviceOption: data.serviceOption,
       challenges: data.challenges || [],
-      budget: data.budget,
       timeline: data.timeline,
       hasBranding: data.hasBranding,
     };
@@ -85,7 +83,6 @@ export async function POST(request: NextRequest) {
         challenges: JSON.stringify(data.challenges || []),
         timeline: data.timeline,
         hasBranding: data.hasBranding || null,
-        budget: data.budget,
         deliveryMethod: JSON.stringify(data.deliveryMethod || []),
         wantsMeeting: data.wantsMeeting === "sim",
         observations: data.observations || null,

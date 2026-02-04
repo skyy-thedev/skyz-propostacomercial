@@ -6,8 +6,9 @@ generator client {
 }
 
 datasource db {
-  provider = "sqlite"
-  url      = env("DATABASE_URL")
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
+  directUrl = env("DIRECT_URL")
 }
 
 // ============================================
@@ -34,7 +35,6 @@ model Proposal {
   challenges      String   @default("[]")  // JSON Array de desafios
   timeline        String   // 'urgente' | 'breve' | 'proximo_mes' | 'sem_pressa'
   hasBranding     String?  // 'sim_completo' | 'sim_parcial' | 'nao'
-  budget          String   // Faixa de orçamento
   
   // === PREFERÊNCIAS ===
   deliveryMethod  String   @default("[]")  // JSON Array: ['online', 'email', 'whatsapp']

@@ -12,14 +12,6 @@ interface Step3InvestmentProps {
   isSubmitting: boolean;
 }
 
-const BUDGET_RANGES = [
-  { id: "ate_500", label: "Até R$ 500", range: [0, 500] },
-  { id: "500_1000", label: "R$ 500 - R$ 1.000", range: [500, 1000] },
-  { id: "1000_2000", label: "R$ 1.000 - R$ 2.000", range: [1000, 2000] },
-  { id: "2000_5000", label: "R$ 2.000 - R$ 5.000", range: [2000, 5000] },
-  { id: "acima_5000", label: "Acima de R$ 5.000", range: [5000, Infinity] },
-];
-
 const DELIVERY_METHODS = [
   { id: "google_drive", label: "Google Drive", icon: "📁" },
   { id: "wetransfer", label: "WeTransfer", icon: "🔗" },
@@ -33,7 +25,6 @@ export default function Step3Investment({
   initialData,
   isSubmitting,
 }: Step3InvestmentProps) {
-  const [budget, setBudget] = useState(initialData.budget || "");
   const [deliveryMethod, setDeliveryMethod] = useState<string[]>(
     initialData.deliveryMethod || []
   );
@@ -60,10 +51,7 @@ export default function Step3Investment({
   };
 
   const handleSubmit = () => {
-    if (!budget) return;
-
     onSubmit({
-      budget,
       deliveryMethod,
       wantsMeeting,
       observations,
@@ -73,27 +61,13 @@ export default function Step3Investment({
     });
   };
 
-  const isValid = budget && wantsMeeting;
-
-  // Price suggestion based on selected service
-  const getSuggestedBudget = () => {
-    if (!service) return null;
-    const basePrice = service.basePrice;
-
-    if (basePrice <= 500) return "ate_500";
-    if (basePrice <= 1000) return "500_1000";
-    if (basePrice <= 2000) return "1000_2000";
-    if (basePrice <= 5000) return "2000_5000";
-    return "acima_5000";
-  };
-
-  const suggestedBudget = getSuggestedBudget();
+  const isValid = wantsMeeting;
 
   return (
     <div className="space-y-8">
       <div className="text-center mb-6">
         <h2 className="text-2xl font-bold text-dark-800 mb-2">
-          Investimento e Preferências
+          Preferências de Entrega
         </h2>
         <p className="text-dark-500">Último passo para sua proposta!</p>
       </div>
@@ -119,35 +93,6 @@ export default function Step3Investment({
           </div>
         </motion.div>
       )}
-
-      {/* Budget Selection */}
-      <div>
-        <label className="block text-sm font-medium text-dark-700 mb-3">
-          Qual seu orçamento disponível? *
-        </label>
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
-          {BUDGET_RANGES.map((range) => (
-            <motion.button
-              key={range.id}
-              whileHover={{ scale: 1.02 }}
-              whileTap={{ scale: 0.98 }}
-              onClick={() => setBudget(range.id)}
-              className={`p-4 rounded-xl border-2 text-center transition-all relative ${
-                budget === range.id
-                  ? "border-primary bg-primary-50"
-                  : "border-gray-200 hover:border-primary/50"
-              }`}
-            >
-              <span className="font-medium text-dark-700">{range.label}</span>
-              {suggestedBudget === range.id && budget !== range.id && (
-                <span className="absolute -top-2 -right-2 bg-secondary text-white text-xs px-2 py-0.5 rounded-full">
-                  Sugerido
-                </span>
-              )}
-            </motion.button>
-          ))}
-        </div>
-      </div>
 
       {/* Delivery Method */}
       <div>

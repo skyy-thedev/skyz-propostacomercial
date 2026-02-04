@@ -24,8 +24,7 @@ export interface FormData {
   challenges?: string[];
   hasBranding?: string;
 
-  // Step 3 - Investimento
-  budget?: string;
+  // Step 3 - Preferências
   deliveryMethod?: string[];
   wantsMeeting?: string;
   observations?: string;
