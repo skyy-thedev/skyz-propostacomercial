@@ -5,10 +5,10 @@ import { getServiceById } from "@/lib/config/services";
 // Temporariamente simplificado para V2 - gera texto simples formatado
 export async function GET(
   request: NextRequest,
-  { params }: { params: Promise<{ id: string }> }
+  { params }: { params: { id: string } }
 ) {
   try {
-    const { id } = await params;
+    const { id } = params;
 
     const proposal = await prisma.proposal.findUnique({
       where: { id },

@@ -6,10 +6,10 @@ import { getServiceById } from "@/lib/config/services";
 // TODO: Implementar geração de PDF para V2
 export async function GET(
   request: NextRequest,
-  { params }: { params: Promise<{ id: string }> }
+  { params }: { params: { id: string } }
 ) {
   try {
-    const { id } = await params;
+    const { id } = params;
 
     const proposal = await prisma.proposal.findUnique({
       where: { id },
