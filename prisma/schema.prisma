@@ -1,0 +1,71 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+// ============================================
+// MODELO OTIMIZADO - V2
+// ============================================
+
+model Proposal {
+  id              String   @id @default(cuid())
+  proposalNumber  String   @unique // Ex: "PROP-2026-001"
+  
+  // === DADOS DO CLIENTE ===
+  clientName      String
+  clientEmail     String
+  clientPhone     String?
+  clientCompany   String?
+  clientSegment   String?  // Segmento do negócio
+  
+  // === SERVIÇO SOLICITADO ===
+  category        String   // 'design' | 'web'
+  mainService     String   // ID do serviço (ex: 'criativos', 'landing_page')
+  serviceOption   String?  // Opção específica (ex: 'pacote_5', 'intermediario')
+  
+  // === CONTEXTO ===
+  challenges      String   @default("[]")  // JSON Array de desafios
+  timeline        String   // 'urgente' | 'breve' | 'proximo_mes' | 'sem_pressa'
+  hasBranding     String?  // 'sim_completo' | 'sim_parcial' | 'nao'
+  budget          String   // Faixa de orçamento
+  
+  // === PREFERÊNCIAS ===
+  deliveryMethod  String   @default("[]")  // JSON Array: ['online', 'email', 'whatsapp']
+  wantsMeeting    Boolean  @default(false)  // Convertido para boolean
+  observations    String?
+  
+  // === PROPOSTA GERADA ===
+  recommendedPackage    String?  // JSON do pacote principal
+  alternativePackages   String   @default("[]")  // JSON das alternativas
+  combos                String?  // JSON dos combos sugeridos
+  
+  // === METADADOS ===
+  status           String   @default("SENT")
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+  validUntil       DateTime
+  viewCount        Int      @default(0)
+  lastViewedAt     DateTime?
+  
+  // === ARQUIVOS ===
+  pdfUrl           String?
+  docxUrl          String?
+
+  // === V3: ENVIO AUTOMÁTICO ===
+  sendByEmail      Boolean  @default(true)
+  sendByWhatsApp   Boolean  @default(false)
+  emailSentAt      DateTime?
+  whatsAppSentAt   DateTime?
+  
+  @@index([clientEmail])
+  @@index([mainService])
+  @@index([createdAt])
+  @@index([proposalNumber])
+}
