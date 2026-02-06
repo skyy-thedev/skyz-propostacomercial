@@ -128,11 +128,23 @@ export default function ProposalViewerV2({
     ...proposal.alternativePackages,
   ];
 
+  // Determinar imagem de fundo baseada na categoria
+  const isDesignCategory = proposal.category === "design";
+  const backgroundImage = isDesignCategory
+    ? "https://images.unsplash.com/photo-1561070791-2526d30994b5?auto=format&fit=crop&w=1920&q=80" // Design/Photoshop
+    : "https://images.unsplash.com/photo-1461749280684-dccba630e2f6?auto=format&fit=crop&w=1920&q=80"; // Dev/Código
+
   return (
     <div className="min-h-screen bg-gradient-to-br from-primary-50 via-white to-secondary-50">
       {/* Header/Cover */}
-      <div className="relative bg-gradient-to-br from-primary via-secondary to-accent text-white">
-        <div className="absolute inset-0 bg-black/10" />
+      <div className="relative text-white overflow-hidden">
+        {/* Imagem de fundo */}
+        <div 
+          className="absolute inset-0 bg-cover bg-center bg-no-repeat"
+          style={{ backgroundImage: `url('${backgroundImage}')` }}
+        />
+        {/* Overlay gradiente */}
+        <div className="absolute inset-0 bg-gradient-to-br from-primary/85 via-secondary/80 to-accent/85" />
         
         <div className="relative max-w-5xl mx-auto px-6 py-16 text-center">
           {isExpired && (

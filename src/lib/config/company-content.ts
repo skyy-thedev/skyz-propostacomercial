@@ -6,8 +6,8 @@ export const COMPANY_INFO = {
   instagram: "@skyzdesignbr",
   instagramUrl: "https://instagram.com/skyzdesignbr",
   email: "contato@skyzdesign.com.br",
-  phone: "(11) 99999-9999",
-  whatsapp: "5511999999999",
+  phone: "(19) 99015-6354",
+  whatsapp: "5519990156354",
   website: "https://skyzdesign.com.br",
   cnpj: "00.000.000/0001-00",
 };
