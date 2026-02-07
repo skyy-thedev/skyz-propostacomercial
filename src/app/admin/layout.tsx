@@ -1,14 +1,13 @@
 // ============================================
 // ADMIN LAYOUT - V4
-// Simple password-based authentication
+// Server-side password authentication
+// Password NEVER exposed to the client
 // ============================================
 
 "use client";
 
 import { useState, useEffect } from "react";
 import { motion } from "framer-motion";
-
-const ADMIN_PASSWORD = process.env.NEXT_PUBLIC_ADMIN_PASSWORD;
 
 export default function AdminLayout({
   children,
@@ -19,31 +18,46 @@ export default function AdminLayout({
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(true);
+  const [loginLoading, setLoginLoading] = useState(false);
 
   useEffect(() => {
-    // Check if already authenticated via sessionStorage
-    const auth = sessionStorage.getItem("admin_auth");
-    if (auth === "true") {
-      setIsAuthenticated(true);
-    }
-    setLoading(false);
+    // Check if already authenticated via httpOnly cookie
+    fetch("/api/admin/auth")
+      .then((res) => {
+        if (res.ok) setIsAuthenticated(true);
+      })
+      .finally(() => setLoading(false));
   }, []);
 
-  const handleLogin = (e: React.FormEvent) => {
+  const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (password === ADMIN_PASSWORD) {
-      setIsAuthenticated(true);
-      sessionStorage.setItem("admin_auth", "true");
-      setError("");
-    } else {
-      setError("Senha incorreta");
-      setPassword("");
+    setLoginLoading(true);
+    setError("");
+
+    try {
+      const res = await fetch("/api/admin/auth", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ password }),
+      });
+
+      if (res.ok) {
+        setIsAuthenticated(true);
+      } else {
+        const data = await res.json();
+        setError(data.error || "Senha incorreta");
+        setPassword("");
+      }
+    } catch {
+      setError("Erro de conexão");
+    } finally {
+      setLoginLoading(false);
     }
   };
 
-  const handleLogout = () => {
+  const handleLogout = async () => {
+    await fetch("/api/admin/auth", { method: "DELETE" });
     setIsAuthenticated(false);
-    sessionStorage.removeItem("admin_auth");
   };
 
   if (loading) {
@@ -87,9 +101,10 @@ export default function AdminLayout({
               )}
               <button
                 type="submit"
-                className="w-full py-3 bg-blue-600 hover:bg-blue-700 text-white font-semibold rounded-xl transition-colors"
+                disabled={loginLoading}
+                className="w-full py-3 bg-blue-600 hover:bg-blue-700 disabled:opacity-60 text-white font-semibold rounded-xl transition-colors"
               >
-                Entrar
+                {loginLoading ? "Verificando..." : "Entrar"}
               </button>
             </form>
           </div>
