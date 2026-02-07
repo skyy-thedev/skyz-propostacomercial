@@ -1,3 +1,9 @@
+// ============================================
+// GERADOR DE DOCX - V4
+// Compatível com schema V2/V3 do Prisma
+// Usa docx library
+// ============================================
+
 import {
   Document,
   Packer,
@@ -14,39 +20,25 @@ import {
   PageBreak,
   Header,
   Footer,
-  ImageRun,
   TabStopType,
   TabStopPosition,
   convertInchesToTwip,
 } from "docx";
-import { ProposalData } from "@/types/proposal.types";
+import { getServiceById } from "@/lib/config/services";
 import {
   COMPANY_INFO,
   COMPANY_ABOUT,
   COMPANY_DIFFERENTIALS,
-  TECHNOLOGIES,
-  TESTIMONIALS,
   TERMS_AND_CONDITIONS,
-  PROPOSAL_VALIDITY_DAYS,
 } from "@/lib/config/company-content";
-import {
-  formatCurrency,
-  formatDate,
-  getValidityDate,
-  getOptionLabel,
-} from "@/lib/utils";
-import {
-  PROBLEM_DURATION_OPTIONS,
-  BENEFICIARIES_OPTIONS,
-  TIMELINE_OPTIONS,
-  OBJECTIVES_OPTIONS,
-} from "@/types/proposal.types";
-import { generatePackages, calculateTimeline } from "./packageGenerator";
+import { formatCurrency } from "@/lib/utils";
+import type { ProposalForPDF } from "./generatePDF";
 
 // Cores em hex
 const COLORS = {
   primary: "0066FF",
   secondary: "6366F1",
+  accent: "8B5CF6",
   dark: "1E293B",
   darkLight: "475569",
   light: "F8FAFC",
@@ -54,18 +46,321 @@ const COLORS = {
   white: "FFFFFF",
 };
 
-export async function generateProposalDOCX(data: ProposalData): Promise<Blob> {
-  // Gerar pacotes baseados nos dados
-  const { packages, recommended } = generatePackages(
-    data.commercial.budget,
-    data.commercial.packagesNumber,
-    data.solution.objectives
+const TIMELINE_LABELS: Record<string, string> = {
+  urgente: "Entrega Urgente (até 3 dias)",
+  normal: "Prazo Normal (1-2 semanas)",
+  flexivel: "Prazo Flexível",
+};
+
+const CHALLENGE_LABELS: Record<string, string> = {
+  visibility: "Aumentar visibilidade online",
+  sales: "Gerar mais vendas",
+  branding: "Fortalecer a marca",
+  engagement: "Aumentar engajamento",
+  presence: "Criar presença digital",
+  conversion: "Melhorar conversão",
+};
+
+interface PackageData {
+  id: string;
+  name: string;
+  price: number;
+  originalPrice?: number;
+  discount?: number;
+  description: string;
+  includes: string[];
+  benefits: string[];
+  deliveryTime: string;
+  isRecommended?: boolean;
+  tag?: string;
+}
+
+function fmtDate(date: Date): string {
+  return new Intl.DateTimeFormat("pt-BR", {
+    day: "2-digit",
+    month: "long",
+    year: "numeric",
+  }).format(new Date(date));
+}
+
+// ============================================
+// MAIN EXPORT - Generates DOCX from V3 Proposal
+// Returns: Buffer (Node.js) for API routes
+// ============================================
+export async function generateProposalDOCXBuffer(
+  proposal: ProposalForPDF
+): Promise<Buffer> {
+  // Parse JSON data
+  const service = getServiceById(proposal.mainService);
+  const recommendedPkg: PackageData | null = proposal.recommendedPackage
+    ? JSON.parse(proposal.recommendedPackage)
+    : null;
+  const alternativePkgs: PackageData[] = proposal.alternativePackages
+    ? JSON.parse(proposal.alternativePackages)
+    : [];
+  const combos: PackageData[] = proposal.combos
+    ? JSON.parse(proposal.combos)
+    : [];
+  const challenges: string[] = proposal.challenges
+    ? JSON.parse(proposal.challenges)
+    : [];
+
+  const serviceName = service?.name || proposal.mainService;
+  const categoryLabel =
+    proposal.category === "design"
+      ? "Design & Social Media"
+      : "Desenvolvimento Web";
+
+  // Build package sections
+  const packageSections: Paragraph[] = [];
+
+  // Recommended package
+  if (recommendedPkg) {
+    packageSections.push(
+      new Paragraph({
+        children: [
+          new TextRun({
+            text: "⭐ PACOTE RECOMENDADO",
+            bold: true,
+            size: 24,
+            color: COLORS.success,
+          }),
+        ],
+        spacing: { before: 300, after: 100 },
+      }),
+      new Paragraph({
+        children: [
+          new TextRun({
+            text: recommendedPkg.name,
+            bold: true,
+            size: 28,
+            color: COLORS.primary,
+          }),
+        ],
+        shading: { type: ShadingType.SOLID, color: "E8F4FF" },
+      }),
+      new Paragraph({
+        children: [
+          new TextRun({
+            text: `Investimento: ${formatCurrency(recommendedPkg.price)}`,
+            bold: true,
+            size: 24,
+            color: COLORS.primary,
+          }),
+        ],
+        spacing: { after: 100 },
+      })
+    );
+
+    if (recommendedPkg.description) {
+      packageSections.push(
+        new Paragraph({
+          children: [
+            new TextRun({
+              text: recommendedPkg.description,
+              size: 20,
+              italics: true,
+              color: COLORS.darkLight,
+            }),
+          ],
+          spacing: { after: 100 },
+        })
+      );
+    }
+
+    packageSections.push(
+      new Paragraph({
+        children: [
+          new TextRun({
+            text: `Prazo de entrega: ${recommendedPkg.deliveryTime}`,
+            size: 20,
+            color: COLORS.darkLight,
+          }),
+        ],
+        spacing: { after: 150 },
+      })
+    );
+
+    if (recommendedPkg.includes && recommendedPkg.includes.length > 0) {
+      packageSections.push(
+        new Paragraph({
+          children: [
+            new TextRun({ text: "O que está incluso:", bold: true, size: 22 }),
+          ],
+          spacing: { before: 100 },
+        })
+      );
+      recommendedPkg.includes.forEach((item) => {
+        packageSections.push(
+          new Paragraph({
+            children: [
+              new TextRun({
+                text: "✓ ",
+                color: COLORS.success,
+                bold: true,
+              }),
+              new TextRun({ text: item, size: 20 }),
+            ],
+            indent: { left: 300 },
+            spacing: { after: 40 },
+          })
+        );
+      });
+    }
+
+    if (recommendedPkg.benefits && recommendedPkg.benefits.length > 0) {
+      packageSections.push(
+        new Paragraph({
+          children: [
+            new TextRun({ text: "Benefícios:", bold: true, size: 22 }),
+          ],
+          spacing: { before: 150 },
+        })
+      );
+      recommendedPkg.benefits.forEach((benefit) => {
+        packageSections.push(
+          new Paragraph({
+            children: [
+              new TextRun({
+                text: "+ ",
+                color: COLORS.accent,
+                bold: true,
+              }),
+              new TextRun({ text: benefit, size: 20 }),
+            ],
+            indent: { left: 300 },
+            spacing: { after: 40 },
+          })
+        );
+      });
+    }
+  }
+
+  // Alternative packages table
+  const altPackageSections: Paragraph[] = [];
+  if (alternativePkgs.length > 0) {
+    altPackageSections.push(
+      new Paragraph({
+        text: "Outras Opções",
+        heading: HeadingLevel.HEADING_2,
+        spacing: { before: 400 },
+      })
+    );
+
+    const headerRow = new TableRow({
+      children: [
+        createHeaderCell("Pacote", 35),
+        createHeaderCell("Tipo", 20),
+        createHeaderCell("Investimento", 25),
+        createHeaderCell("Prazo", 20),
+      ],
+    });
+
+    const altRows = alternativePkgs.map(
+      (pkg, index) =>
+        new TableRow({
+          children: [
+            createBodyCell(pkg.name, index, false, true),
+            createBodyCell(pkg.tag || "", index),
+            createBodyCell(formatCurrency(pkg.price), index, true),
+            createBodyCell(pkg.deliveryTime, index),
+          ],
+        })
+    );
+
+    altPackageSections.push(
+      new Table({
+        rows: [headerRow, ...altRows],
+        width: { size: 100, type: WidthType.PERCENTAGE },
+      }) as unknown as Paragraph
+    );
+  }
+
+  // Combos sections
+  const comboSections: Paragraph[] = [];
+  if (combos.length > 0) {
+    comboSections.push(
+      new Paragraph({
+        text: "Combos Especiais",
+        heading: HeadingLevel.HEADING_2,
+        spacing: { before: 400 },
+      })
+    );
+
+    combos.forEach((combo) => {
+      comboSections.push(
+        new Paragraph({
+          children: [
+            ...(combo.tag
+              ? [
+                  new TextRun({
+                    text: `[${combo.tag}] `,
+                    bold: true,
+                    size: 20,
+                    color: COLORS.accent,
+                  }),
+                ]
+              : []),
+            new TextRun({
+              text: combo.name,
+              bold: true,
+              size: 24,
+              color: COLORS.dark,
+            }),
+          ],
+          spacing: { before: 200 },
+          shading: { type: ShadingType.SOLID, color: COLORS.light },
+        }),
+        new Paragraph({
+          children: [
+            new TextRun({
+              text: `${formatCurrency(combo.price)}`,
+              bold: true,
+              size: 24,
+              color: COLORS.primary,
+            }),
+            ...(combo.originalPrice && combo.discount
+              ? [
+                  new TextRun({ text: "  " }),
+                  new TextRun({
+                    text: `${formatCurrency(combo.originalPrice)}`,
+                    strike: true,
+                    size: 20,
+                    color: COLORS.darkLight,
+                  }),
+                  new TextRun({
+                    text: ` (-${combo.discount}%)`,
+                    bold: true,
+                    size: 20,
+                    color: COLORS.success,
+                  }),
+                ]
+              : []),
+          ],
+          spacing: { after: 50 },
+        }),
+        new Paragraph({
+          children: [
+            new TextRun({
+              text: combo.description,
+              size: 20,
+              color: COLORS.darkLight,
+            }),
+          ],
+          spacing: { after: 150 },
+        })
+      );
+    });
+  }
+
+  // Challenges text
+  const challengeLabels = challenges.map(
+    (c) => CHALLENGE_LABELS[c] || c
   );
 
-  const selectedPackage = packages[recommended];
-  const totalTimeline = calculateTimeline(packages, recommended);
-
-  // Criar documento
+  // ============================================
+  // BUILD DOCUMENT
+  // ============================================
   const doc = new Document({
     styles: {
       default: {
@@ -76,9 +371,7 @@ export async function generateProposalDOCX(data: ProposalData): Promise<Blob> {
             color: COLORS.primary,
             font: "Calibri",
           },
-          paragraph: {
-            spacing: { before: 400, after: 200 },
-          },
+          paragraph: { spacing: { before: 400, after: 200 } },
         },
         heading2: {
           run: {
@@ -87,9 +380,7 @@ export async function generateProposalDOCX(data: ProposalData): Promise<Blob> {
             color: COLORS.primary,
             font: "Calibri",
           },
-          paragraph: {
-            spacing: { before: 300, after: 150 },
-          },
+          paragraph: { spacing: { before: 300, after: 150 } },
         },
         heading3: {
           run: {
@@ -98,19 +389,11 @@ export async function generateProposalDOCX(data: ProposalData): Promise<Blob> {
             color: COLORS.dark,
             font: "Calibri",
           },
-          paragraph: {
-            spacing: { before: 200, after: 100 },
-          },
+          paragraph: { spacing: { before: 200, after: 100 } },
         },
         document: {
-          run: {
-            size: 22,
-            font: "Calibri",
-            color: COLORS.dark,
-          },
-          paragraph: {
-            spacing: { line: 360 },
-          },
+          run: { size: 22, font: "Calibri", color: COLORS.dark },
+          paragraph: { spacing: { line: 360 } },
         },
       },
     },
@@ -130,10 +413,9 @@ export async function generateProposalDOCX(data: ProposalData): Promise<Blob> {
           },
         },
         children: [
-          // Espaçamento superior
           new Paragraph({ text: "", spacing: { before: 2000 } }),
-          
-          // Logo/Nome da empresa
+
+          // Logo / Company name
           new Paragraph({
             children: [
               new TextRun({
@@ -146,7 +428,7 @@ export async function generateProposalDOCX(data: ProposalData): Promise<Blob> {
             ],
             alignment: AlignmentType.CENTER,
           }),
-          
+
           new Paragraph({
             children: [
               new TextRun({
@@ -159,8 +441,8 @@ export async function generateProposalDOCX(data: ProposalData): Promise<Blob> {
             alignment: AlignmentType.CENTER,
             spacing: { after: 800 },
           }),
-          
-          // Linha decorativa
+
+          // Decorative line
           new Paragraph({
             children: [
               new TextRun({
@@ -172,8 +454,8 @@ export async function generateProposalDOCX(data: ProposalData): Promise<Blob> {
             alignment: AlignmentType.CENTER,
             spacing: { after: 400 },
           }),
-          
-          // Título
+
+          // Title
           new Paragraph({
             children: [
               new TextRun({
@@ -185,26 +467,41 @@ export async function generateProposalDOCX(data: ProposalData): Promise<Blob> {
               }),
             ],
             alignment: AlignmentType.CENTER,
+            spacing: { after: 200 },
+          }),
+
+          // Proposal number
+          new Paragraph({
+            children: [
+              new TextRun({
+                text: `Nº ${proposal.proposalNumber}`,
+                size: 24,
+                color: COLORS.darkLight,
+                font: "Calibri",
+              }),
+            ],
+            alignment: AlignmentType.CENTER,
             spacing: { after: 800 },
           }),
-          
-          // Info do cliente
+
+          // Client info
           new Paragraph({
             children: [
               new TextRun({
                 text: "Preparada para:",
                 size: 22,
                 color: COLORS.darkLight,
-                font: "Calibri",
               }),
             ],
             alignment: AlignmentType.CENTER,
           }),
-          
+
           new Paragraph({
             children: [
               new TextRun({
-                text: data.client.company,
+                text: proposal.clientCompany
+                  ? `${proposal.clientName} - ${proposal.clientCompany}`
+                  : proposal.clientName,
                 bold: true,
                 size: 36,
                 color: COLORS.dark,
@@ -212,72 +509,33 @@ export async function generateProposalDOCX(data: ProposalData): Promise<Blob> {
               }),
             ],
             alignment: AlignmentType.CENTER,
-            spacing: { after: 200 },
-          }),
-          
-          new Paragraph({
-            children: [
-              new TextRun({
-                text: `A/C: ${data.client.name}`,
-                size: 24,
-                color: COLORS.darkLight,
-                font: "Calibri",
-              }),
-            ],
-            alignment: AlignmentType.CENTER,
-          }),
-          
-          new Paragraph({
-            children: [
-              new TextRun({
-                text: data.client.role,
-                size: 22,
-                color: COLORS.darkLight,
-                font: "Calibri",
-              }),
-            ],
-            alignment: AlignmentType.CENTER,
             spacing: { after: 1000 },
           }),
-          
-          // Data e número da proposta
+
+          // Dates
           new Paragraph({
             children: [
               new TextRun({
-                text: `Proposta: ${data.proposalNumber}`,
+                text: `Data: ${fmtDate(proposal.createdAt)}`,
                 size: 20,
                 color: COLORS.darkLight,
-                font: "Calibri",
               }),
             ],
             alignment: AlignmentType.CENTER,
           }),
-          
+
           new Paragraph({
             children: [
               new TextRun({
-                text: `Data: ${formatDate(new Date())}`,
+                text: `Válida até: ${fmtDate(proposal.validUntil)}`,
                 size: 20,
                 color: COLORS.darkLight,
-                font: "Calibri",
-              }),
-            ],
-            alignment: AlignmentType.CENTER,
-          }),
-          
-          new Paragraph({
-            children: [
-              new TextRun({
-                text: `Validade: ${formatDate(getValidityDate(PROPOSAL_VALIDITY_DAYS))}`,
-                size: 20,
-                color: COLORS.darkLight,
-                font: "Calibri",
               }),
             ],
             alignment: AlignmentType.CENTER,
             spacing: { after: 1500 },
           }),
-          
+
           // Instagram
           new Paragraph({
             children: [
@@ -286,14 +544,13 @@ export async function generateProposalDOCX(data: ProposalData): Promise<Blob> {
                 bold: true,
                 size: 24,
                 color: COLORS.primary,
-                font: "Calibri",
               }),
             ],
             alignment: AlignmentType.CENTER,
           }),
         ],
       },
-      
+
       // ============================================
       // CONTEÚDO PRINCIPAL
       // ============================================
@@ -320,7 +577,7 @@ export async function generateProposalDOCX(data: ProposalData): Promise<Blob> {
                     bold: true,
                   }),
                   new TextRun({
-                    text: `\t\t\tProposta ${data.proposalNumber}`,
+                    text: `\t\t\tProposta ${proposal.proposalNumber}`,
                     color: COLORS.darkLight,
                     size: 18,
                   }),
@@ -349,7 +606,7 @@ export async function generateProposalDOCX(data: ProposalData): Promise<Blob> {
               new Paragraph({
                 children: [
                   new TextRun({
-                    text: `${COMPANY_INFO.instagram} | ${COMPANY_INFO.email}`,
+                    text: `${COMPANY_INFO.instagram} | ${COMPANY_INFO.email} | ${COMPANY_INFO.phone}`,
                     color: COLORS.darkLight,
                     size: 16,
                   }),
@@ -361,19 +618,105 @@ export async function generateProposalDOCX(data: ProposalData): Promise<Blob> {
         },
         children: [
           // ============================================
-          // 1. APRESENTAÇÃO
+          // 1. DADOS DO CLIENTE
           // ============================================
           new Paragraph({
-            text: "1. APRESENTAÇÃO",
+            text: "1. DADOS DO CLIENTE",
             heading: HeadingLevel.HEADING_1,
           }),
-          
+
+          createInfoParagraph("Nome", proposal.clientName),
+          createInfoParagraph("E-mail", proposal.clientEmail),
+          ...(proposal.clientPhone
+            ? [createInfoParagraph("Telefone", proposal.clientPhone)]
+            : []),
+          ...(proposal.clientCompany
+            ? [createInfoParagraph("Empresa", proposal.clientCompany)]
+            : []),
+          ...(proposal.clientSegment
+            ? [createInfoParagraph("Segmento", proposal.clientSegment)]
+            : []),
+
+          new Paragraph({ children: [new PageBreak()] }),
+
+          // ============================================
+          // 2. SERVIÇO SOLICITADO
+          // ============================================
           new Paragraph({
-            children: [new TextRun({ text: COMPANY_ABOUT.full, size: 22 })],
+            text: "2. SERVIÇO SOLICITADO",
+            heading: HeadingLevel.HEADING_1,
+          }),
+
+          createInfoParagraph("Serviço", serviceName),
+          createInfoParagraph("Categoria", categoryLabel),
+          createInfoParagraph(
+            "Prazo",
+            TIMELINE_LABELS[proposal.timeline] || proposal.timeline
+          ),
+
+          // Challenges/Objectives
+          ...(challengeLabels.length > 0
+            ? [
+                new Paragraph({
+                  children: [
+                    new TextRun({
+                      text: "Objetivos:",
+                      bold: true,
+                      size: 22,
+                      color: COLORS.primary,
+                    }),
+                  ],
+                  spacing: { before: 200 },
+                }),
+                ...challengeLabels.map(
+                  (ch) =>
+                    new Paragraph({
+                      children: [
+                        new TextRun({
+                          text: "• ",
+                          color: COLORS.success,
+                          bold: true,
+                        }),
+                        new TextRun({ text: ch, size: 20 }),
+                      ],
+                      indent: { left: 300 },
+                      spacing: { after: 40 },
+                    })
+                ),
+              ]
+            : []),
+
+          // Branding info
+          ...(proposal.hasBranding
+            ? [
+                createInfoParagraph(
+                  "Identidade Visual",
+                  proposal.hasBranding === "sim"
+                    ? "Já possui"
+                    : proposal.hasBranding === "nao"
+                    ? "Não possui"
+                    : "Precisa atualizar"
+                ),
+              ]
+            : []),
+
+          new Paragraph({ children: [new PageBreak()] }),
+
+          // ============================================
+          // 3. APRESENTAÇÃO SKYZ DESIGN
+          // ============================================
+          new Paragraph({
+            text: "3. SOBRE A SKYZ DESIGN",
+            heading: HeadingLevel.HEADING_1,
+          }),
+
+          new Paragraph({
+            children: [
+              new TextRun({ text: COMPANY_ABOUT.full, size: 22 }),
+            ],
             spacing: { after: 300 },
           }),
-          
-          // Missão
+
           new Paragraph({
             children: [
               new TextRun({
@@ -389,18 +732,15 @@ export async function generateProposalDOCX(data: ProposalData): Promise<Blob> {
               }),
             ],
             spacing: { after: 400 },
-            shading: {
-              type: ShadingType.SOLID,
-              color: COLORS.light,
-            },
+            shading: { type: ShadingType.SOLID, color: COLORS.light },
           }),
-          
-          // Diferenciais
+
+          // Differentials
           new Paragraph({
             text: "Nossos Diferenciais",
             heading: HeadingLevel.HEADING_3,
           }),
-          
+
           ...COMPANY_DIFFERENTIALS.map(
             (diff) =>
               new Paragraph({
@@ -422,229 +762,9 @@ export async function generateProposalDOCX(data: ProposalData): Promise<Blob> {
                 spacing: { after: 100 },
               })
           ),
-          
+
           new Paragraph({ children: [new PageBreak()] }),
-          
-          // ============================================
-          // 2. ENTENDIMENTO DO DESAFIO
-          // ============================================
-          new Paragraph({
-            text: "2. ENTENDIMENTO DO DESAFIO",
-            heading: HeadingLevel.HEADING_1,
-          }),
-          
-          new Paragraph({
-            children: [
-              new TextRun({
-                text: `Com base em nossa conversa, identificamos que ${data.client.company} enfrenta desafios importantes que demandam atenção estratégica.`,
-                size: 22,
-              }),
-            ],
-            spacing: { after: 300 },
-          }),
-          
-          // Desafio Principal
-          new Paragraph({
-            children: [
-              new TextRun({
-                text: "🎯 Desafio Principal",
-                bold: true,
-                size: 24,
-                color: COLORS.primary,
-              }),
-            ],
-            spacing: { before: 200 },
-          }),
-          
-          new Paragraph({
-            children: [new TextRun({ text: data.diagnosis.mainObstacle, size: 22 })],
-            spacing: { after: 300 },
-          }),
-          
-          // Tempo do problema
-          new Paragraph({
-            children: [
-              new TextRun({
-                text: "⏱ Tempo do desafio: ",
-                bold: true,
-                color: COLORS.primary,
-              }),
-              new TextRun({
-                text: getOptionLabel(PROBLEM_DURATION_OPTIONS, data.diagnosis.problemDuration),
-              }),
-            ],
-            spacing: { after: 200 },
-          }),
-          
-          // Motivação
-          new Paragraph({
-            children: [
-              new TextRun({
-                text: "💡 Motivação para buscar solução agora:",
-                bold: true,
-                color: COLORS.primary,
-              }),
-            ],
-          }),
-          
-          new Paragraph({
-            children: [new TextRun({ text: data.diagnosis.motivation, size: 22 })],
-            spacing: { after: 300 },
-          }),
-          
-          // Tentativas anteriores
-          new Paragraph({
-            children: [
-              new TextRun({
-                text: "🔄 Tentativas anteriores:",
-                bold: true,
-                color: COLORS.primary,
-              }),
-            ],
-          }),
-          
-          new Paragraph({
-            children: [new TextRun({ text: data.diagnosis.previousAttempts, size: 22 })],
-            spacing: { after: 200 },
-          }),
-          
-          new Paragraph({
-            children: [
-              new TextRun({
-                text: "Por que não funcionaram: ",
-                bold: true,
-              }),
-              new TextRun({ text: data.diagnosis.whyFailed }),
-            ],
-            spacing: { after: 300 },
-          }),
-          
-          // Consequências
-          new Paragraph({
-            children: [
-              new TextRun({
-                text: "⚠️ Impacto se não resolvido:",
-                bold: true,
-                color: "CC9900",
-              }),
-            ],
-          }),
-          
-          new Paragraph({
-            children: [new TextRun({ text: data.diagnosis.consequences, size: 22 })],
-            spacing: { after: 300 },
-            shading: {
-              type: ShadingType.SOLID,
-              color: "FFF8E1",
-            },
-          }),
-          
-          new Paragraph({ children: [new PageBreak()] }),
-          
-          // ============================================
-          // 3. SOLUÇÃO PROPOSTA
-          // ============================================
-          new Paragraph({
-            text: "3. SOLUÇÃO PROPOSTA",
-            heading: HeadingLevel.HEADING_1,
-          }),
-          
-          new Paragraph({
-            children: [
-              new TextRun({
-                text: "🚀 Sua Visão de Solução Ideal",
-                bold: true,
-                size: 24,
-                color: COLORS.primary,
-              }),
-            ],
-          }),
-          
-          new Paragraph({
-            children: [new TextRun({ text: data.solution.idealSolution, size: 22 })],
-            spacing: { after: 300 },
-            shading: {
-              type: ShadingType.SOLID,
-              color: COLORS.light,
-            },
-          }),
-          
-          // Objetivos
-          new Paragraph({
-            children: [
-              new TextRun({
-                text: "🎯 Objetivos a Alcançar:",
-                bold: true,
-                size: 24,
-                color: COLORS.primary,
-              }),
-            ],
-            spacing: { before: 200 },
-          }),
-          
-          ...data.solution.objectives.map(
-            (obj) =>
-              new Paragraph({
-                children: [
-                  new TextRun({
-                    text: "✓ ",
-                    color: COLORS.success,
-                    bold: true,
-                  }),
-                  new TextRun({
-                    text: getOptionLabel(OBJECTIVES_OPTIONS, obj),
-                  }),
-                ],
-                spacing: { after: 80 },
-              })
-          ),
-          
-          ...(data.solution.otherObjective
-            ? [
-                new Paragraph({
-                  children: [
-                    new TextRun({
-                      text: "✓ ",
-                      color: COLORS.success,
-                      bold: true,
-                    }),
-                    new TextRun({ text: data.solution.otherObjective }),
-                  ],
-                  spacing: { after: 80 },
-                }),
-              ]
-            : []),
-          
-          new Paragraph({
-            children: [
-              new TextRun({
-                text: "👥 Beneficiários: ",
-                bold: true,
-                color: COLORS.primary,
-              }),
-              new TextRun({
-                text: getOptionLabel(BENEFICIARIES_OPTIONS, data.solution.beneficiaries),
-              }),
-            ],
-            spacing: { before: 200, after: 100 },
-          }),
-          
-          new Paragraph({
-            children: [
-              new TextRun({
-                text: "📅 Prazo desejado: ",
-                bold: true,
-                color: COLORS.primary,
-              }),
-              new TextRun({
-                text: getOptionLabel(TIMELINE_OPTIONS, data.solution.timeline),
-              }),
-            ],
-            spacing: { after: 300 },
-          }),
-          
-          new Paragraph({ children: [new PageBreak()] }),
-          
+
           // ============================================
           // 4. ESCOPO E INVESTIMENTO
           // ============================================
@@ -652,251 +772,52 @@ export async function generateProposalDOCX(data: ProposalData): Promise<Blob> {
             text: "4. ESCOPO E INVESTIMENTO",
             heading: HeadingLevel.HEADING_1,
           }),
-          
-          // Pacotes
-          ...packages.flatMap((pkg, index) => {
-            const isRecommended = index === recommended;
-            return [
-              new Paragraph({
-                children: [
-                  new TextRun({
-                    text: pkg.name.toUpperCase(),
-                    bold: true,
-                    size: 28,
-                    color: isRecommended ? COLORS.primary : COLORS.dark,
-                  }),
-                  ...(isRecommended
-                    ? [
-                        new TextRun({
-                          text: " ⭐ RECOMENDADO",
-                          bold: true,
-                          size: 20,
-                          color: COLORS.success,
-                        }),
-                      ]
-                    : []),
-                ],
-                spacing: { before: 300 },
-                shading: isRecommended
-                  ? { type: ShadingType.SOLID, color: "E8F4FF" }
-                  : undefined,
-              }),
-              
-              new Paragraph({
-                children: [
-                  new TextRun({
-                    text: `Investimento: ${formatCurrency(pkg.price)}`,
-                    bold: true,
-                    size: 24,
-                    color: COLORS.primary,
-                  }),
-                ],
-                spacing: { after: 100 },
-              }),
-              
-              new Paragraph({
-                children: [new TextRun({ text: pkg.description, size: 20, italics: true })],
-                spacing: { after: 150 },
-              }),
-              
-              new Paragraph({
-                children: [
-                  new TextRun({
-                    text: "Inclui:",
-                    bold: true,
-                    size: 20,
-                  }),
-                ],
-              }),
-              
-              ...pkg.features.map(
-                (feature) =>
-                  new Paragraph({
-                    children: [
-                      new TextRun({
-                        text: "✓ ",
-                        color: COLORS.success,
-                        bold: true,
-                      }),
-                      new TextRun({ text: feature, size: 20 }),
-                    ],
-                    indent: { left: 300 },
-                  })
-              ),
-              
-              new Paragraph({ text: "", spacing: { after: 200 } }),
-            ];
-          }),
-          
+
+          ...packageSections,
+          ...altPackageSections,
+          ...comboSections,
+
           new Paragraph({ children: [new PageBreak()] }),
-          
-          // Tabela comparativa
-          new Paragraph({
-            text: "Comparativo de Pacotes",
-            heading: HeadingLevel.HEADING_2,
-          }),
-          
-          createComparisonTable(packages),
-          
-          new Paragraph({ children: [new PageBreak()] }),
-          
+
           // ============================================
-          // 5. CRONOGRAMA
+          // 5. PRÓXIMOS PASSOS
           // ============================================
           new Paragraph({
-            text: "5. CRONOGRAMA",
+            text: "5. PRÓXIMOS PASSOS",
             heading: HeadingLevel.HEADING_1,
           }),
-          
-          new Paragraph({
-            children: [
-              new TextRun({
-                text: `Cronograma estimado para o pacote ${selectedPackage.name}: `,
-              }),
-              new TextRun({
-                text: totalTimeline,
-                bold: true,
-                color: COLORS.primary,
-              }),
-            ],
-            spacing: { after: 300 },
-          }),
-          
-          ...selectedPackage.deliveryPhases.flatMap((phase, index) => [
-            new Paragraph({
-              children: [
-                new TextRun({
-                  text: `Fase ${index + 1}: ${phase.name}`,
-                  bold: true,
-                  size: 24,
-                  color: COLORS.primary,
-                }),
-              ],
-              spacing: { before: 200 },
-            }),
-            new Paragraph({
-              children: [new TextRun({ text: phase.description, size: 20 })],
-            }),
-            new Paragraph({
-              children: [
-                new TextRun({
-                  text: `Duração: ${phase.duration}`,
-                  italics: true,
-                  color: COLORS.darkLight,
-                }),
-              ],
-              spacing: { after: 150 },
-            }),
-          ]),
-          
-          new Paragraph({ children: [new PageBreak()] }),
-          
-          // ============================================
-          // 6. DIFERENCIAIS
-          // ============================================
-          new Paragraph({
-            text: "6. DIFERENCIAIS SKYZ DESIGN BR",
-            heading: HeadingLevel.HEADING_1,
-          }),
-          
-          ...COMPANY_DIFFERENTIALS.map(
-            (diff) =>
-              new Paragraph({
-                children: [
-                  new TextRun({
-                    text: "✓ ",
-                    color: COLORS.success,
-                    bold: true,
-                    size: 24,
-                  }),
-                  new TextRun({
-                    text: diff.title,
-                    bold: true,
-                    size: 22,
-                  }),
-                ],
-                spacing: { after: 100 },
-              })
+
+          createStepParagraph(
+            "1",
+            "Analise os pacotes apresentados nesta proposta"
           ),
-          
-          new Paragraph({
-            text: "Tecnologias e Ferramentas",
-            heading: HeadingLevel.HEADING_3,
-            spacing: { before: 400 },
-          }),
-          
-          new Paragraph({
-            children: TECHNOLOGIES.map((tech, index) => [
-              new TextRun({ text: tech.name }),
-              ...(index < TECHNOLOGIES.length - 1
-                ? [new TextRun({ text: " • " })]
-                : []),
-            ]).flat(),
-            spacing: { after: 300 },
-          }),
-          
+          createStepParagraph(
+            "2",
+            "Escolha o pacote que melhor atende suas necessidades"
+          ),
+          createStepParagraph(
+            "3",
+            "Entre em contato conosco via WhatsApp ou e-mail"
+          ),
+          createStepParagraph(
+            "4",
+            "Agendaremos uma reunião para alinhar detalhes"
+          ),
+          createStepParagraph(
+            "5",
+            "Iniciamos o projeto imediatamente após aprovação"
+          ),
+
           new Paragraph({ children: [new PageBreak()] }),
-          
+
           // ============================================
-          // 7. CASOS DE SUCESSO
+          // 6. TERMOS E CONDIÇÕES
           // ============================================
           new Paragraph({
-            text: "7. CASOS DE SUCESSO",
+            text: "6. TERMOS E CONDIÇÕES",
             heading: HeadingLevel.HEADING_1,
           }),
-          
-          ...TESTIMONIALS.slice(0, 2).flatMap((testimonial) => [
-            new Paragraph({
-              children: [
-                new TextRun({
-                  text: testimonial.client,
-                  bold: true,
-                  size: 24,
-                  color: COLORS.primary,
-                }),
-              ],
-              spacing: { before: 300 },
-            }),
-            new Paragraph({
-              children: [
-                new TextRun({ text: "Desafio: ", bold: true }),
-                new TextRun({ text: testimonial.challenge }),
-              ],
-            }),
-            new Paragraph({
-              children: [
-                new TextRun({ text: "Solução: ", bold: true }),
-                new TextRun({ text: testimonial.solution }),
-              ],
-            }),
-            new Paragraph({
-              children: [
-                new TextRun({ text: "Resultado: ", bold: true, color: COLORS.success }),
-                new TextRun({ text: testimonial.result, bold: true }),
-              ],
-            }),
-            new Paragraph({
-              children: [
-                new TextRun({
-                  text: `"${testimonial.quote}"`,
-                  italics: true,
-                  color: COLORS.darkLight,
-                }),
-              ],
-              spacing: { after: 200 },
-            }),
-          ]),
-          
-          new Paragraph({ children: [new PageBreak()] }),
-          
-          // ============================================
-          // 8. TERMOS E CONDIÇÕES
-          // ============================================
-          new Paragraph({
-            text: "8. TERMOS E CONDIÇÕES",
-            heading: HeadingLevel.HEADING_1,
-          }),
-          
+
           ...TERMS_AND_CONDITIONS.flatMap((term) => [
             new Paragraph({
               children: [
@@ -909,13 +830,17 @@ export async function generateProposalDOCX(data: ProposalData): Promise<Blob> {
               spacing: { before: 150 },
             }),
             new Paragraph({
-              children: [new TextRun({ text: term.content, size: 20 })],
+              children: [
+                new TextRun({ text: term.content, size: 20 }),
+              ],
               indent: { left: 300 },
               spacing: { after: 100 },
             }),
           ]),
-          
-          // Contato final
+
+          // ============================================
+          // CONTACT CTA
+          // ============================================
           new Paragraph({
             children: [
               new TextRun({
@@ -926,11 +851,11 @@ export async function generateProposalDOCX(data: ProposalData): Promise<Blob> {
             alignment: AlignmentType.CENTER,
             spacing: { before: 500 },
           }),
-          
+
           new Paragraph({
             children: [
               new TextRun({
-                text: "Vamos transformar sua visão em realidade!",
+                text: "Vamos começar?",
                 bold: true,
                 size: 28,
                 color: COLORS.primary,
@@ -939,7 +864,7 @@ export async function generateProposalDOCX(data: ProposalData): Promise<Blob> {
             alignment: AlignmentType.CENTER,
             spacing: { after: 200 },
           }),
-          
+
           new Paragraph({
             children: [
               new TextRun({
@@ -950,22 +875,22 @@ export async function generateProposalDOCX(data: ProposalData): Promise<Blob> {
             ],
             alignment: AlignmentType.CENTER,
           }),
-          
+
           new Paragraph({
             children: [
               new TextRun({
-                text: `${COMPANY_INFO.instagram} | ${COMPANY_INFO.email}`,
+                text: `WhatsApp: ${COMPANY_INFO.phone} | E-mail: ${COMPANY_INFO.email}`,
                 size: 20,
                 color: COLORS.darkLight,
               }),
             ],
             alignment: AlignmentType.CENTER,
           }),
-          
+
           new Paragraph({
             children: [
               new TextRun({
-                text: COMPANY_INFO.phone,
+                text: `${COMPANY_INFO.instagram} | ${COMPANY_INFO.website}`,
                 size: 20,
                 color: COLORS.darkLight,
               }),
@@ -977,125 +902,94 @@ export async function generateProposalDOCX(data: ProposalData): Promise<Blob> {
     ],
   });
 
-  return Packer.toBlob(doc);
+  const buffer = await Packer.toBuffer(doc);
+  return buffer;
 }
 
-// Função auxiliar para criar tabela comparativa
-function createComparisonTable(packages: { name: string; price: number; features: string[] }[]): Table {
-  // Coletar todas as features únicas
-  const allFeatures = Array.from(new Set(packages.flatMap((p) => p.features))).slice(0, 10);
+// ============================================
+// HELPER FUNCTIONS
+// ============================================
 
-  // Criar linhas da tabela
-  const headerRow = new TableRow({
+function createInfoParagraph(label: string, value: string): Paragraph {
+  return new Paragraph({
     children: [
-      new TableCell({
-        children: [
-          new Paragraph({
-            children: [
-              new TextRun({ text: "Característica", bold: true, color: COLORS.white }),
-            ],
-          }),
-        ],
-        shading: { type: ShadingType.SOLID, color: COLORS.primary },
-        width: { size: 40, type: WidthType.PERCENTAGE },
+      new TextRun({
+        text: `${label}: `,
+        bold: true,
+        size: 22,
+        color: COLORS.darkLight,
       }),
-      ...packages.map(
-        (pkg) =>
-          new TableCell({
-            children: [
-              new Paragraph({
-                children: [
-                  new TextRun({ text: pkg.name, bold: true, color: COLORS.white }),
-                ],
-                alignment: AlignmentType.CENTER,
-              }),
-            ],
-            shading: { type: ShadingType.SOLID, color: COLORS.primary },
-          })
-      ),
+      new TextRun({
+        text: value,
+        size: 22,
+        color: COLORS.dark,
+      }),
     ],
+    spacing: { after: 80 },
   });
+}
 
-  const featureRows = allFeatures.map(
-    (feature, index) =>
-      new TableRow({
-        children: [
-          new TableCell({
-            children: [
-              new Paragraph({
-                children: [
-                  new TextRun({
-                    text: feature.length > 50 ? feature.substring(0, 50) + "..." : feature,
-                    size: 18,
-                  }),
-                ],
-              }),
-            ],
-            shading:
-              index % 2 === 0
-                ? { type: ShadingType.SOLID, color: COLORS.light }
-                : undefined,
-          }),
-          ...packages.map(
-            (pkg) =>
-              new TableCell({
-                children: [
-                  new Paragraph({
-                    children: [
-                      new TextRun({
-                        text: pkg.features.includes(feature) ? "✓" : "—",
-                        color: pkg.features.includes(feature) ? COLORS.success : COLORS.darkLight,
-                        bold: pkg.features.includes(feature),
-                        size: 22,
-                      }),
-                    ],
-                    alignment: AlignmentType.CENTER,
-                  }),
-                ],
-                shading:
-                  index % 2 === 0
-                    ? { type: ShadingType.SOLID, color: COLORS.light }
-                    : undefined,
-              })
-          ),
-        ],
-      })
-  );
-
-  // Linha de preço
-  const priceRow = new TableRow({
+function createStepParagraph(num: string, text: string): Paragraph {
+  return new Paragraph({
     children: [
-      new TableCell({
+      new TextRun({
+        text: `${num}. `,
+        bold: true,
+        size: 24,
+        color: COLORS.primary,
+      }),
+      new TextRun({
+        text: text,
+        size: 22,
+      }),
+    ],
+    spacing: { after: 120 },
+  });
+}
+
+function createHeaderCell(text: string, widthPct: number): TableCell {
+  return new TableCell({
+    children: [
+      new Paragraph({
         children: [
-          new Paragraph({
-            children: [new TextRun({ text: "Investimento", bold: true })],
+          new TextRun({
+            text,
+            bold: true,
+            color: COLORS.white,
+            size: 20,
           }),
         ],
-        shading: { type: ShadingType.SOLID, color: "E8F4FF" },
+        alignment: AlignmentType.CENTER,
       }),
-      ...packages.map(
-        (pkg) =>
-          new TableCell({
-            children: [
-              new Paragraph({
-                children: [
-                  new TextRun({
-                    text: formatCurrency(pkg.price),
-                    bold: true,
-                    color: COLORS.primary,
-                  }),
-                ],
-                alignment: AlignmentType.CENTER,
-              }),
-            ],
-            shading: { type: ShadingType.SOLID, color: "E8F4FF" },
-          })
-      ),
     ],
+    shading: { type: ShadingType.SOLID, color: COLORS.primary },
+    width: { size: widthPct, type: WidthType.PERCENTAGE },
   });
+}
 
-  return new Table({
-    rows: [headerRow, ...featureRows, priceRow],
-    width: { size: 100, type: WidthType.PERCENTAGE },
+function createBodyCell(
+  text: string,
+  rowIndex: number,
+  isPrimary = false,
+  isBold = false
+): TableCell {
+  return new TableCell({
+    children: [
+      new Paragraph({
+        children: [
+          new TextRun({
+            text,
+            size: 20,
+            bold: isBold,
+            color: isPrimary ? COLORS.primary : COLORS.dark,
+          }),
+        ],
+        alignment: AlignmentType.CENTER,
+      }),
+    ],
+    shading:
+      rowIndex % 2 === 0
+        ? { type: ShadingType.SOLID, color: COLORS.light }
+        : undefined,
   });
 }

@@ -1,8 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
-import { getServiceById } from "@/lib/config/services";
+import { generateProposalDOCXBuffer } from "@/lib/generators";
 
-// Temporariamente simplificado para V2 - gera texto simples formatado
 export async function GET(
   request: NextRequest,
   { params }: { params: { id: string } }
@@ -21,59 +20,19 @@ export async function GET(
       );
     }
 
-    const service = getServiceById(proposal.mainService);
-    const recommendedPackage = proposal.recommendedPackage 
-      ? JSON.parse(proposal.recommendedPackage)
-      : null;
+    const docxBuffer = await generateProposalDOCXBuffer(proposal);
+    const uint8 = new Uint8Array(docxBuffer);
 
-    // Por enquanto, retornar uma versão texto da proposta
-    // TODO: Implementar geração de DOCX para V2
-    const proposalText = `
-PROPOSTA COMERCIAL Nº ${proposal.proposalNumber}
-===============================================
-
-CLIENTE
--------
-Nome: ${proposal.clientName}
-Email: ${proposal.clientEmail}
-${proposal.clientPhone ? `Telefone: ${proposal.clientPhone}` : ""}
-${proposal.clientCompany ? `Empresa: ${proposal.clientCompany}` : ""}
-${proposal.clientSegment ? `Segmento: ${proposal.clientSegment}` : ""}
-
-SERVIÇO SOLICITADO
-------------------
-Categoria: ${proposal.category === "design" ? "Design & Social Media" : "Desenvolvimento Web"}
-Serviço: ${service?.name || proposal.mainService}
-Prazo: ${proposal.timeline}
-
-${recommendedPackage ? `
-PACOTE RECOMENDADO
-------------------
-${recommendedPackage.name}
-Preço: R$ ${recommendedPackage.price?.toFixed(2).replace(".", ",")}
-${recommendedPackage.description || ""}
-
-Inclui:
-${recommendedPackage.includes?.map((i: string) => `- ${i}`).join("\n") || ""}
-
-Benefícios:
-${recommendedPackage.benefits?.map((b: string) => `- ${b}`).join("\n") || ""}
-` : ""}
-
----
-Proposta válida até: ${new Date(proposal.validUntil).toLocaleDateString("pt-BR")}
-Skyz Design BR - @skyzdesignbr
-    `.trim();
-
-    // Retornar como arquivo de texto por enquanto
-    return new NextResponse(proposalText, {
+    return new NextResponse(uint8, {
       headers: {
-        "Content-Type": "text/plain; charset=utf-8",
-        "Content-Disposition": `attachment; filename="proposta-${proposal.proposalNumber}.txt"`,
+        "Content-Type":
+          "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+        "Content-Disposition": `attachment; filename="proposta-${proposal.proposalNumber}.docx"`,
+        "Content-Length": docxBuffer.length.toString(),
       },
     });
   } catch (error) {
-    console.error("Erro ao gerar documento:", error);
-    return NextResponse.json({ error: "Erro ao gerar documento" }, { status: 500 });
+    console.error("Erro ao gerar DOCX:", error);
+    return NextResponse.json({ error: "Erro ao gerar DOCX" }, { status: 500 });
   }
 }

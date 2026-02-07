@@ -1,9 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
-import { getServiceById } from "@/lib/config/services";
+import { generateProposalPDFBuffer } from "@/lib/generators";
 
-// Temporariamente simplificado para V2 - retorna info básica como JSON
-// TODO: Implementar geração de PDF para V2
 export async function GET(
   request: NextRequest,
   { params }: { params: { id: string } }
@@ -22,58 +20,18 @@ export async function GET(
       );
     }
 
-    const service = getServiceById(proposal.mainService);
-    const recommendedPackage = proposal.recommendedPackage 
-      ? JSON.parse(proposal.recommendedPackage)
-      : null;
+    const pdfBuffer = generateProposalPDFBuffer(proposal);
+    const uint8 = new Uint8Array(pdfBuffer);
 
-    // Por enquanto, retornar uma versão texto da proposta
-    const proposalText = `
-PROPOSTA COMERCIAL Nº ${proposal.proposalNumber}
-===============================================
-
-CLIENTE
--------
-Nome: ${proposal.clientName}
-Email: ${proposal.clientEmail}
-${proposal.clientPhone ? `Telefone: ${proposal.clientPhone}` : ""}
-${proposal.clientCompany ? `Empresa: ${proposal.clientCompany}` : ""}
-${proposal.clientSegment ? `Segmento: ${proposal.clientSegment}` : ""}
-
-SERVIÇO SOLICITADO
-------------------
-Categoria: ${proposal.category === "design" ? "Design & Social Media" : "Desenvolvimento Web"}
-Serviço: ${service?.name || proposal.mainService}
-Prazo: ${proposal.timeline}
-
-${recommendedPackage ? `
-PACOTE RECOMENDADO
-------------------
-${recommendedPackage.name}
-Preço: R$ ${recommendedPackage.price?.toFixed(2).replace(".", ",")}
-${recommendedPackage.description || ""}
-
-Inclui:
-${recommendedPackage.includes?.map((i: string) => `- ${i}`).join("\n") || ""}
-
-Benefícios:
-${recommendedPackage.benefits?.map((b: string) => `- ${b}`).join("\n") || ""}
-` : ""}
-
----
-Proposta válida até: ${new Date(proposal.validUntil).toLocaleDateString("pt-BR")}
-Skyz Design BR - @skyzdesignbr
-    `.trim();
-
-    // Retornar como arquivo de texto por enquanto
-    return new NextResponse(proposalText, {
+    return new NextResponse(uint8, {
       headers: {
-        "Content-Type": "text/plain; charset=utf-8",
-        "Content-Disposition": `attachment; filename="proposta-${proposal.proposalNumber}.txt"`,
+        "Content-Type": "application/pdf",
+        "Content-Disposition": `attachment; filename="proposta-${proposal.proposalNumber}.pdf"`,
+        "Content-Length": pdfBuffer.length.toString(),
       },
     });
   } catch (error) {
-    console.error("Erro ao gerar documento:", error);
-    return NextResponse.json({ error: "Erro ao gerar documento" }, { status: 500 });
+    console.error("Erro ao gerar PDF:", error);
+    return NextResponse.json({ error: "Erro ao gerar PDF" }, { status: 500 });
   }
 }

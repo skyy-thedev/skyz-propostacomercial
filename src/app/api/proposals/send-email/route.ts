@@ -5,6 +5,7 @@ import {
   generateProposalEmailHTML,
   generateProposalEmailText,
 } from "@/lib/email/proposalEmailTemplate";
+import { generateProposalPDFBuffer } from "@/lib/generators";
 
 // ============================================
 // API DE ENVIO DE EMAIL - V3
@@ -34,27 +35,34 @@ interface SendEmailRequest {
   proposalNumber: string;
 }
 
-// Função para enviar via Resend (opcional)
+// Função para enviar via Resend (com anexo PDF opcional)
 async function sendViaResend(
   to: string,
   subject: string,
   html: string,
-  text: string
+  text: string,
+  attachments?: { filename: string; content: string }[]
 ): Promise<{ success: boolean; error?: string }> {
   try {
+    const body: Record<string, unknown> = {
+      from: process.env.EMAIL_FROM || "SKYZ DESIGN <onboarding@resend.dev>",
+      to: [to],
+      subject,
+      html,
+      text,
+    };
+
+    if (attachments && attachments.length > 0) {
+      body.attachments = attachments;
+    }
+
     const response = await fetch("https://api.resend.com/emails", {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
         Authorization: `Bearer ${process.env.RESEND_API_KEY}`,
       },
-      body: JSON.stringify({
-        from: process.env.EMAIL_FROM || "SKYZ DESIGN <onboarding@resend.dev>",
-        to: [to],
-        subject,
-        html,
-        text,
-      }),
+      body: JSON.stringify(body),
     });
 
     if (!response.ok) {
@@ -107,8 +115,24 @@ export async function POST(request: NextRequest) {
 
     // Verificar se há configuração de email
     if (process.env.RESEND_API_KEY) {
+      // Gerar PDF para anexar ao email
+      let attachments: { filename: string; content: string }[] = [];
+      try {
+        const pdfBuffer = generateProposalPDFBuffer(proposal);
+        attachments = [
+          {
+            filename: `proposta-${proposal.proposalNumber}.pdf`,
+            content: pdfBuffer.toString("base64"),
+          },
+        ];
+        console.log(`📎 PDF gerado para anexo (${(pdfBuffer.length / 1024).toFixed(1)}KB)`);
+      } catch (pdfError) {
+        console.error("⚠️ Erro ao gerar PDF para anexo:", pdfError);
+        // Continua sem anexo
+      }
+
       // Enviar via Resend API
-      const result = await sendViaResend(data.email, subject, htmlContent, textContent);
+      const result = await sendViaResend(data.email, subject, htmlContent, textContent, attachments);
       emailSent = result.success;
       emailError = result.error || null;
       

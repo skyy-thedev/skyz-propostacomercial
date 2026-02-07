@@ -1,4 +1,4 @@
-// Exportar geradores
-export { generateProposalPDF } from "./generatePDF";
-export { generateProposalDOCX } from "./generateDOCX";
-export { generatePackages, calculateTimeline } from "./packageGenerator";
+// Exportar geradores V4
+export { generateProposalPDFBuffer } from "./generatePDF";
+export type { ProposalForPDF } from "./generatePDF";
+export { generateProposalDOCXBuffer } from "./generateDOCX";
